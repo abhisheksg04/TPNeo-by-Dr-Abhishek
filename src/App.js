@@ -18,7 +18,7 @@ const InputField = ({ label, id, value, onChange, unit, placeholder, helpText })
       {label}
       {helpText && (
         <div className="group relative ml-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="bi bi-info-circle text-gray-400" viewBox="0 0 16 16">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="text-gray-400" viewBox="0 0 16 16">
             <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
             <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.055.492.14.556.224.064.084.096.232.096.465 0 .273-.038.546-.11.816-.073.27-.186.522-.317.714-.13.188-.285.346-.46.477-.175.13-.37.217-.585.255l-.21.039-.257.257.257.257.21.039c.215.038.41.125.585.255.175.13.33.29.46.477.13.192.244.444.317.714.072.27.11.543.11.816 0 .233-.032.38-.096.465-.064.084-.262.17-.556.224l-.45.083.082.38.229.287zM8 5.5a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
           </svg>
@@ -166,20 +166,34 @@ export default function App() {
     const calculateDextroseMix = () => {
         const FIXED_VOLUME = 60;
         
-        const naMeq = weight * naDose;
-        const naVolume = naMeq / NACL_3_MEQ_PER_ML;
-        const kMeq = weight * kDose;
-        const kVolume = kMeq / KCL_MEQ_PER_ML;
-        const caVolume = weight * caDose;
+        if (dextroseAndElectrolyteVolume <= 0) {
+            return { error: "No volume available for Dextrose/Electrolyte infusion." };
+        }
+
+        // Correction factor to scale the 24h electrolyte dose to the 60ml preparation volume
+        const correctionFactor = FIXED_VOLUME / dextroseAndElectrolyteVolume;
+
+        // Calculate the PROPORTIONAL amount of electrolytes for the 60ml syringe
+        const dailyNaMeq = weight * naDose;
+        const proportionalNaMeq = dailyNaMeq * correctionFactor;
+        const naVolume = proportionalNaMeq / NACL_3_MEQ_PER_ML;
+
+        const dailyKMeq = weight * kDose;
+        const proportionalKMeq = dailyKMeq * correctionFactor;
+        const kVolume = proportionalKMeq / KCL_MEQ_PER_ML;
+        
+        const dailyCaVolume = weight * caDose;
+        const caVolume = dailyCaVolume * correctionFactor;
+
         const totalElectrolyteVolume = naVolume + kVolume + caVolume;
 
         if (totalElectrolyteVolume >= FIXED_VOLUME) {
-            return { error: `Electrolyte volume (${totalElectrolyteVolume.toFixed(2)} ml) exceeds the fixed ${FIXED_VOLUME}ml limit.` };
+            return { error: `Proportional electrolyte volume (${totalElectrolyteVolume.toFixed(2)} ml) exceeds the fixed ${FIXED_VOLUME}ml limit.` };
         }
 
         const availableVolumeForDextrose = FIXED_VOLUME - totalElectrolyteVolume;
         const totalDextroseGramsPerDay = (gir * weight * 1440) / 1000;
-        const dailyDextroseConcentration = dextroseAndElectrolyteVolume > 0 ? totalDextroseGramsPerDay / dextroseAndElectrolyteVolume : 0;
+        const dailyDextroseConcentration = totalDextroseGramsPerDay / dextroseAndElectrolyteVolume;
         const targetGramsIn60ml = dailyDextroseConcentration * FIXED_VOLUME;
         const targetConcentration = availableVolumeForDextrose > 0 ? targetGramsIn60ml / availableVolumeForDextrose : 0;
 
