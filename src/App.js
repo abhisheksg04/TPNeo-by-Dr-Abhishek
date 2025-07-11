@@ -11,6 +11,11 @@ const DEXTROSE_SOLUTIONS = [
 const NACL_3_MEQ_PER_ML = 0.513; // 3g NaCl in 100ml -> 30g/L. Molar mass ~58.5g/mol. 30/58.5 ~ 0.513 mol/L or 513 mEq/L -> 0.513 mEq/ml
 const KCL_MEQ_PER_ML = 2; // Standard concentration is often 2 mEq/ml
 
+// Caloric constants (kcal/g or kcal/ml)
+const KCAL_PER_GRAM_DEXTROSE = 3.4;
+const KCAL_PER_GRAM_AMINO_ACID = 4.0;
+const KCAL_PER_ML_LIPID_20 = 2.0; // 20% lipid emulsion provides 2.0 kcal/ml
+
 // --- Helper Components ---
 const InputField = ({ label, id, value, onChange, unit, placeholder, helpText }) => (
   <div className="mb-4">
@@ -162,6 +167,20 @@ export default function App() {
     const dextroseAndElectrolyteVolume = Math.max(0, parenteralFluidVolume - aaVolume - lipidVolume);
     const dextroseAndElectrolyteRate = dextroseAndElectrolyteVolume / 24;
     
+    const totalDextroseGramsPerDay = (gir * weight * 1440) / 1000;
+
+    // --- Calorie Calculations ---
+    const dextroseCalories = totalDextroseGramsPerDay * KCAL_PER_GRAM_DEXTROSE;
+    const aaCalories = aaGrams * KCAL_PER_GRAM_AMINO_ACID;
+    const lipidCalories = lipidVolume * KCAL_PER_ML_LIPID_20; // Using volume for 20% lipids
+    const totalCalories = dextroseCalories + aaCalories + lipidCalories;
+    const totalCaloriesPerKg = weight > 0 ? totalCalories / weight : 0;
+
+    // --- Calorie Percentage Calculations ---
+    const dextrosePercentage = totalCalories > 0 ? (dextroseCalories / totalCalories) * 100 : 0;
+    const aaPercentage = totalCalories > 0 ? (aaCalories / totalCalories) * 100 : 0;
+    const lipidPercentage = totalCalories > 0 ? (lipidCalories / totalCalories) * 100 : 0;
+
     // --- Dextrose Mixture Calculation ---
     const calculateDextroseMix = () => {
         const FIXED_VOLUME = 60;
@@ -182,8 +201,8 @@ export default function App() {
         const proportionalKMeq = dailyKMeq * correctionFactor;
         const kVolume = proportionalKMeq / KCL_MEQ_PER_ML;
         
-        const dailyCaVolume = weight * caDose;
-        const caVolume = dailyCaVolume * correctionFactor;
+        const dailyCaVolumeDose = weight * caDose;
+        const caVolume = dailyCaVolumeDose * correctionFactor;
 
         const totalElectrolyteVolume = naVolume + kVolume + caVolume;
 
@@ -192,8 +211,7 @@ export default function App() {
         }
 
         const availableVolumeForDextrose = FIXED_VOLUME - totalElectrolyteVolume;
-        const totalDextroseGramsPerDay = (gir * weight * 1440) / 1000;
-        const dailyDextroseConcentration = totalDextroseGramsPerDay / dextroseAndElectrolyteVolume;
+        const dailyDextroseConcentration = dextroseAndElectrolyteVolume > 0 ? totalDextroseGramsPerDay / dextroseAndElectrolyteVolume : 0;
         const targetGramsIn60ml = dailyDextroseConcentration * FIXED_VOLUME;
         const targetConcentration = availableVolumeForDextrose > 0 ? targetGramsIn60ml / availableVolumeForDextrose : 0;
 
@@ -259,7 +277,9 @@ export default function App() {
 
     setResults({
       totalFluidIntake, parenteralFluidVolume, aaVolume, aaRate, lipidVolume, lipidRate,
-      dextroseAndElectrolyteVolume, dextroseAndElectrolyteRate, dextroseMix
+      dextroseAndElectrolyteVolume, dextroseAndElectrolyteRate, dextroseMix,
+      dextroseCalories, aaCalories, lipidCalories, totalCalories, totalCaloriesPerKg,
+      dextrosePercentage, aaPercentage, lipidPercentage
     });
 
   }, [inputs, selectedDextrose]);
@@ -319,6 +339,49 @@ export default function App() {
                 <ResultCard title="Fluid Summary">
                   <ResultRow label="Total Fluid Intake (TFI)" value={results.totalFluidIntake.toFixed(2)} unit="ml/day" />
                   <ResultRow label="Total Parenteral Nutrition (PN)" value={results.parenteralFluidVolume.toFixed(2)} unit="ml/day" isHighlighted={true} />
+                </ResultCard>
+
+                {/* --- UPDATED CALORIE CARD --- */}
+                <ResultCard title="Calorie Summary">
+                    <div className="flex justify-between items-center text-gray-700">
+                        <span className="text-sm">Calories from Dextrose</span>
+                        <div className="text-right">
+                            <span className="font-medium text-base">
+                                {results.dextroseCalories.toFixed(1)}
+                                <span className="text-xs text-gray-500 ml-1">kcal/day</span>
+                            </span>
+                            <span className="font-medium text-sm text-gray-500 ml-2 w-16 inline-block">
+                                ({results.dextrosePercentage.toFixed(1)}%)
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex justify-between items-center text-gray-700">
+                        <span className="text-sm">Calories from Amino Acids</span>
+                        <div className="text-right">
+                            <span className="font-medium text-base">
+                                {results.aaCalories.toFixed(1)}
+                                <span className="text-xs text-gray-500 ml-1">kcal/day</span>
+                            </span>
+                            <span className="font-medium text-sm text-gray-500 ml-2 w-16 inline-block">
+                                ({results.aaPercentage.toFixed(1)}%)
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex justify-between items-center text-gray-700">
+                        <span className="text-sm">Calories from Lipids</span>
+                        <div className="text-right">
+                            <span className="font-medium text-base">
+                                {results.lipidCalories.toFixed(1)}
+                                <span className="text-xs text-gray-500 ml-1">kcal/day</span>
+                            </span>
+                            <span className="font-medium text-sm text-gray-500 ml-2 w-16 inline-block">
+                                ({results.lipidPercentage.toFixed(1)}%)
+                            </span>
+                        </div>
+                    </div>
+                    <hr/>
+                    <ResultRow label="Total Parenteral Calories" value={results.totalCalories.toFixed(1)} unit="kcal/day" isHighlighted={true} />
+                    <ResultRow label="Total Parenteral Calories per kg" value={results.totalCaloriesPerKg.toFixed(1)} unit="kcal/kg/day" isHighlighted={true} />
                 </ResultCard>
                 
                 <ResultCard title="Infusion Rates">
