@@ -66,7 +66,7 @@ const ResultRow = ({ label, value, unit, isHighlighted = false }) => (
   </div>
 );
 
-const DextroseMixResult = ({ mix }) => {
+const DextroseMixResult = ({ mix, preparationVolume }) => {
   if (mix.error) {
     return (
       <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
@@ -115,6 +115,7 @@ export default function App() {
     potassium: '2',
     calcium: '2',
     gir: '8',
+    preparationVolume: '60', // New state for user-defined volume
   });
 
   const [selectedDextrose, setSelectedDextrose] = useState(DEXTROSE_SOLUTIONS.map(s => s.name));
@@ -145,6 +146,7 @@ export default function App() {
     const kDose = parseFloat(inputs.potassium) || 0;
     const caDose = parseFloat(inputs.calcium) || 0;
     const gir = parseFloat(inputs.gir) || 0;
+    const preparationVolume = parseFloat(inputs.preparationVolume) || 0; // Read from state
 
     if (weight === 0) {
       setResults(null);
@@ -183,16 +185,20 @@ export default function App() {
 
     // --- Dextrose Mixture Calculation ---
     const calculateDextroseMix = () => {
-        const FIXED_VOLUME = 60;
+        const PREP_VOLUME = preparationVolume; // Use the user-defined volume
+        
+        if (PREP_VOLUME <= 0) {
+            return { error: "Please enter a valid preparation volume." };
+        }
         
         if (dextroseAndElectrolyteVolume <= 0) {
             return { error: "No volume available for Dextrose/Electrolyte infusion." };
         }
 
-        // Correction factor to scale the 24h electrolyte dose to the 60ml preparation volume
-        const correctionFactor = FIXED_VOLUME / dextroseAndElectrolyteVolume;
+        // Correction factor to scale the 24h electrolyte dose to the custom preparation volume
+        const correctionFactor = PREP_VOLUME / dextroseAndElectrolyteVolume;
 
-        // Calculate the PROPORTIONAL amount of electrolytes for the 60ml syringe
+        // Calculate the PROPORTIONAL amount of electrolytes for the custom syringe
         const dailyNaMeq = weight * naDose;
         const proportionalNaMeq = dailyNaMeq * correctionFactor;
         const naVolume = proportionalNaMeq / NACL_3_MEQ_PER_ML;
@@ -206,14 +212,14 @@ export default function App() {
 
         const totalElectrolyteVolume = naVolume + kVolume + caVolume;
 
-        if (totalElectrolyteVolume >= FIXED_VOLUME) {
-            return { error: `Proportional electrolyte volume (${totalElectrolyteVolume.toFixed(2)} ml) exceeds the fixed ${FIXED_VOLUME}ml limit.` };
+        if (totalElectrolyteVolume >= PREP_VOLUME) {
+            return { error: `Proportional electrolyte volume (${totalElectrolyteVolume.toFixed(2)} ml) exceeds the preparation volume of ${PREP_VOLUME}ml.` };
         }
 
-        const availableVolumeForDextrose = FIXED_VOLUME - totalElectrolyteVolume;
+        const availableVolumeForDextrose = PREP_VOLUME - totalElectrolyteVolume;
         const dailyDextroseConcentration = dextroseAndElectrolyteVolume > 0 ? totalDextroseGramsPerDay / dextroseAndElectrolyteVolume : 0;
-        const targetGramsIn60ml = dailyDextroseConcentration * FIXED_VOLUME;
-        const targetConcentration = availableVolumeForDextrose > 0 ? targetGramsIn60ml / availableVolumeForDextrose : 0;
+        const targetGramsInPrepVolume = dailyDextroseConcentration * PREP_VOLUME;
+        const targetConcentration = availableVolumeForDextrose > 0 ? targetGramsInPrepVolume / availableVolumeForDextrose : 0;
 
         const availableSolutions = DEXTROSE_SOLUTIONS
             .filter(s => selectedDextrose.includes(s.name))
@@ -250,14 +256,14 @@ export default function App() {
             }
             return {
                 parts: [{ name: highSolution.name, volume: availableVolumeForDextrose }],
-                naVolume, kVolume, caVolume, finalVolume: FIXED_VOLUME, targetGrams: targetGramsIn60ml, finalConcentration: dailyDextroseConcentration,
+                naVolume, kVolume, caVolume, finalVolume: PREP_VOLUME, targetGrams: targetGramsInPrepVolume, finalConcentration: dailyDextroseConcentration,
             };
         }
         
         const C_h = highSolution.gramsPerMl;
         const C_l = lowSolution.gramsPerMl;
 
-        let volumeHigh = (targetGramsIn60ml - availableVolumeForDextrose * C_l) / (C_h - C_l);
+        let volumeHigh = (targetGramsInPrepVolume - availableVolumeForDextrose * C_l) / (C_h - C_l);
         let volumeLow = availableVolumeForDextrose - volumeHigh;
         
         if (volumeHigh < -0.001 || volumeLow < -0.001) {
@@ -269,7 +275,7 @@ export default function App() {
                 { name: highSolution.name, volume: Math.max(0, volumeHigh) },
                 { name: lowSolution.name, volume: Math.max(0, volumeLow) }
             ].filter(p => p.volume > 0.001),
-            naVolume, kVolume, caVolume, finalVolume: FIXED_VOLUME, targetGrams: targetGramsIn60ml, finalConcentration: dailyDextroseConcentration,
+            naVolume, kVolume, caVolume, finalVolume: PREP_VOLUME, targetGrams: targetGramsInPrepVolume, finalConcentration: dailyDextroseConcentration,
         };
     };
 
@@ -313,6 +319,17 @@ export default function App() {
                 <InputField label="Glucose Infusion Rate (GIR)" id="gir" value={inputs.gir} onChange={handleInputChange} unit="mg/kg/min" />
             </div>
             <div className="mt-6 pt-4 border-t">
+                 <h3 className="text-sm font-medium text-gray-700 mb-2">Preparation Settings</h3>
+                 <InputField 
+                    label="Dextrose Prep Volume" 
+                    id="preparationVolume" 
+                    value={inputs.preparationVolume} 
+                    onChange={handleInputChange} 
+                    unit="ml" 
+                    helpText="The total volume of the syringe you will prepare for the Dextrose/Electrolyte infusion."
+                />
+            </div>
+            <div className="mt-2 pt-4 border-t">
               <h3 className="text-sm font-medium text-gray-700 mb-2">Available Dextrose Solutions</h3>
               <div className="flex flex-wrap gap-x-4 gap-y-2">
                 {DEXTROSE_SOLUTIONS.map(solution => (
@@ -341,7 +358,6 @@ export default function App() {
                   <ResultRow label="Total Parenteral Nutrition (PN)" value={results.parenteralFluidVolume.toFixed(2)} unit="ml/day" isHighlighted={true} />
                 </ResultCard>
 
-                {/* --- UPDATED CALORIE CARD --- */}
                 <ResultCard title="Calorie Summary">
                     <div className="flex justify-between items-center text-gray-700">
                         <span className="text-sm">Calories from Dextrose</span>
@@ -396,7 +412,7 @@ export default function App() {
                 </ResultCard>
 
                 <ResultCard title="Dextrose/Electrolyte Preparation">
-                   <p className="text-sm text-gray-600">This calculation is for preparing a standard <span className="font-bold">60 ml</span> syringe for infusion.</p>
+                   <p className="text-sm text-gray-600">This calculation is for preparing a <span className="font-bold">{inputs.preparationVolume || '...'} ml</span> syringe for infusion.</p>
                    <DextroseMixResult mix={results.dextroseMix} />
                 </ResultCard>
               </>
